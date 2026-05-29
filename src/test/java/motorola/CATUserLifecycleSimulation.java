@@ -26,27 +26,6 @@ public class CATUserLifecycleSimulation extends Simulation {
             .connectionHeader("keep-alive")    // Nicely asks the load balancer to keep the channel open organically
             .maxConnectionsPerHost(6);
 
-//    // --- 1. LOGIN GROUP ---
-//    private static ChainBuilder loginGroup = group("Step 01: Auth & Login").on(
-//            exec(http("1. Initial Redirect")
-//                    .get("/cat/view/idmlogin")
-//                    .disableFollowRedirect()
-//                    .check(status().is(302), header("Location").saveAs("keycloakUrl")))
-//                    .exec(http("2. Load Keycloak Page")
-//                            .get(session -> session.getString("keycloakUrl"))
-//                            .check(status().is(200), regex("var loginAction = '([^']*)'").saveAs("rawLoginAction")))
-//                    .exec(session -> {
-//                        String raw = session.getString("rawLoginAction");
-//                        return session.set("loginAction", raw != null ? raw.replace("&amp;", "&") : "");
-//                    })
-//                    .exec(http("3. Submit Credentials")
-//                            .post(session -> session.getString("loginAction"))
-//                            .formParam("username", "#{username}")
-//                            .formParam("password", "#{password}")
-//                            .formParam("login", "log in")
-//                            .check(status().is(200)))
-//    );
-
     // --- 1. LOGIN GROUP ---
     private static ChainBuilder loginGroup = group("Step 01: Auth & Login").on(
             // Request 1: Must keep disableFollowRedirect because we need to catch the "Location" header!
@@ -148,173 +127,26 @@ private static ChainBuilder logoutGroup = group("Step 03: Session Cleanup").on(
 //        ).protocols(httpProtocol);
 //    }
 
-//    {
-//        // Remember to change to atOnceUsers(1) for your single user validation sweeps!
-//        setUp(
-//                scn.injectOpen(rampUsers(1000).during(Duration.ofSeconds(300)))
-//        ).protocols(httpProtocol);
-//    }
+    {
+        // Remember to change to atOnceUsers(1) for your single user validation sweeps!
+        setUp(
+                scn.injectOpen(rampUsers(1000).during(Duration.ofSeconds(300)))
+        ).protocols(httpProtocol);
+    }
 
     // --- 1-HOUR CONTINUOUS WORKLOAD CONFIGURATION ---
-    {
-        setUp(
-                scn.injectOpen(
-                        // 1. Warm-up: Smoothly ramp up from 0 to 5 login sessions per second over 5 minutes
-                        rampUsersPerSec(0).to(5).during(Duration.ofMinutes(5)),
-
-                        // 2. Peak Time: Maintain a rock-solid 5 users logging in every second for 1 hour
-                        constantUsersPerSec(5).during(Duration.ofHours(1))
-                )
-        )
-                .protocols(httpProtocol)
-                // Safety gate to cleanly shut down all long-running iterations after 1 hour and 10 minutes
-                .maxDuration(Duration.ofHours(1).plusMinutes(10));
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//package motorola;
-//
-//import static io.gatling.javaapi.core.CoreDsl.*;
-//import static io.gatling.javaapi.http.HttpDsl.*;
-//import io.gatling.javaapi.core.*;
-//import io.gatling.javaapi.http.*;
-//import java.time.Duration;
-//
-///**
-// * Meaningful Name: CATUserLifecycleSimulation
-// * Purpose: Tests the full end-to-end journey of a CAT user,
-// * including Auth, Dashboard Bootstrapping, and Logout.
-// */
-//public class CATUserLifecycleSimulation extends Simulation {
-//
-//    private FeederBuilder<String> userFeeder = csv("users.csv").circular();
-//
-//    private HttpProtocolBuilder httpProtocol = http
-//            .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
-//            .acceptHeader("application/json, text/plain, */*")
-//            .acceptLanguageHeader("en-US,en;q=0.9")
-//            .userAgentHeader("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-//            .disableCaching()
-//            .shareConnections(); // Keep the connection alive
-//
-//    // --- 1. LOGIN GROUP ---
-//    private static ChainBuilder loginGroup = group("Step 01: Auth & Login").on(
-//            exec(http("1. Initial Redirect")
-//                    .get("/cat/view/idmlogin")
-//                    .disableFollowRedirect()
-//                    .check(status().is(302), header("Location").saveAs("keycloakUrl")))
-//                    .exec(http("2. Load Keycloak Page")
-//                            .get(session -> session.getString("keycloakUrl"))
-//                            .check(status().is(200), regex("var loginAction = '([^']*)'").saveAs("rawLoginAction")))
-//                    .exec(session -> {
-//                        String raw = session.getString("rawLoginAction");
-//                        return session.set("loginAction", raw != null ? raw.replace("&amp;", "&") : "");
-//                    })
-//                    .exec(http("3. Submit Credentials")
-//                            .post(session -> session.getString("loginAction"))
-//                            .formParam("username", "#{username}")
-//                            .formParam("password", "#{password}")
-//                            .formParam("login", "log in")
-//                            .check(status().is(200)))
-//    );
-//
-//    // --- 2. BASELINE PAGE LOAD GROUP (Data Bootstrapping) ---
-//    private static ChainBuilder baselinePageLoad = group("Step 02: Initial Page Load Baseline").on(
-//            exec(http("4. API: Get Global Data").post("/cat/rest/getGlobalData").check(status().is(200)))
-//                    .exec(http("5. API: Refresh Token").post("/cat/view/refreshToken").body(StringBody("{}")).check(status().is(200)))
-//                    .exec(http("6. API: Get Users Permissions").post("/cat/rest/getUsersPermissions").header("Content-Type", "application/json").body(StringBody("{\"agencyInfo\":{\"corpName\":\"AshwinCorp\"},\"userIdList\":[\"#{username}\"]}")).check(status().is(200)))
-//                    .exec(http("7. API: Sync Master List Info").post("/cat/rest/syncMasterListInfo").check(status().is(200)))
-//                    .exec(http("8. API: Get All Async Events").get("/cat/rest/getAllAsyncEvents").check(status().is(200)))
-//                    .repeat(4, "i").on(
-//                            exec(http("9. API: Get Subscriber Stats").get("/cat/rest/getSubscriberStats").check(status().is(200)))
-//                    )
-//    );
-//
-//    // --- 3. LOGOUT GROUP ---
-//    private static ChainBuilder logoutGroup = group("Step 03: Session Cleanup").on(
-//            exec(http("10. Logout").get("/cat/view/logout").check(status().in(200, 302)))
-//                    .exec(flushCookieJar())
-//    );
-//
-//    // --- SCENARIO DEFINITION ---
-//    private ScenarioBuilder scn = scenario("CAT E2E User Lifecycle")
-//            .feed(userFeeder)
-//            .exec(loginGroup)
-//            .pause(1, 3)
-//            .exec(baselinePageLoad)
-//            .pause(1)    // Simulate user "active" on dashboard
-//            .exec(logoutGroup)
-//            .pause(1);
-//
 //    {
-//        // 1000 users over 5 mins (3.33 TPS) as per business expectation
 //        setUp(
-//                scn.injectOpen(rampUsers(2).during(Duration.ofSeconds(3)))
-//        ).protocols(httpProtocol);
-//    }
+//                scn.injectOpen(
+//                        // 1. Warm-up: Smoothly ramp up from 0 to 5 login sessions per second over 5 minutes
+//                        rampUsersPerSec(0).to(5).during(Duration.ofMinutes(5)),
 //
-////    //This set up is to repeate the same 100 users for 30 mins so that selenium tests can be run in parallel
-////    // to validate the performance results and also to check for any
-////    // "Busy" errors in the logs which are indicative of system slowness under load.
-////    {
-////        setUp(
-////                scn.injectClosed(
-////                        // 1. Ramp seats from 0 to 100
-////                        rampConcurrentUsers(0).to(100).during(Duration.ofMinutes(5)),
-////                        // 2. Keep all 100 seats full for 25 more minutes
-////                        constantConcurrentUsers(100).during(Duration.ofMinutes(25))
-////                )
-////        ).protocols(httpProtocol);
-////    }
-//}
+//                        // 2. Peak Time: Maintain a rock-solid 5 users logging in every second for 1 hour
+//                        constantUsersPerSec(5).during(Duration.ofHours(1))
+//                )
+//        )
+//                .protocols(httpProtocol)
+//                // Safety gate to cleanly shut down all long-running iterations after 1 hour and 10 minutes
+//                .maxDuration(Duration.ofHours(1).plusMinutes(10));
+//    }
+}

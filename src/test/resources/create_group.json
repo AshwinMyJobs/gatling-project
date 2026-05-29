@@ -1,0 +1,14 @@
+{
+  "grpProfileInfo": {
+    "grpProfileName": "#{grp_profile_uuid}",
+    "grpType": "1",
+    "grpAvatar": "0",
+    "grpOSMListId": "",
+    "audioCutIn": 0,
+    "mcxGroup": "0",
+    "grpShared": "0",
+    "grpSharedCorpList": [
+      "AshwinCorp"
+    ]
+  }
+}
