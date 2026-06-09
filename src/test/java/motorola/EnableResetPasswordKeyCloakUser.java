@@ -10,6 +10,13 @@ import static io.gatling.javaapi.core.CoreDsl.*;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
 
+/**
+ * This simulation is used to mass-enable user accounts in Keycloak and reset their passwords using the Keycloak Admin API.
+ * The users which are created using CreateUsersSimulation_OrgAdmin and CreateUsersSimulation_DeptAdmin
+ * should be entered in the EnableResetPasswordKeyCloakUser.csv with super admin credentials in the begining
+ * followed by the username, email, and new password for each user to be enabled and reset.
+ */
+
 public class EnableResetPasswordKeyCloakUser extends Simulation {
 
     // 1. Direct Backend Infrastructure Configuration
