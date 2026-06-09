@@ -9,18 +9,25 @@ import static io.gatling.javaapi.core.CoreDsl.*;
 import static io.gatling.javaapi.http.HttpDsl.*;
 
 /*
- * This Gatling Simulation script is designed
- * to automate the creation of Department Admin users in the WMS application.
- *
- * CreateUsersSimulation.csv contains super admin credentials followed by the new user details to be created.
+    * This Gatling Simulation script is designed
+    * to automate the creation of admin users in the WMS application.
+    *
+    *
+    * CreateUsersSimulation_OrgAdmin.csv contains super admin credentials followed by the new user details to be created.
+    * The script performs the following steps:
+    * Logins to Keycloak using the super admin credentials to obtain necessary authentication cookies.
+    * Initializes the application baseline by calling essential APIs to set up the session context.
+    *
+    * set up loop which is present at the end of file
+    * will be used to create the number of desired users by adjusting the rampUsers count and duration.
  */
 
-public class CreateDeptAdminUsersSimulation extends Simulation {
+public class CreateUsersSimulation_OrgAdmin extends Simulation {
 
     // 1. Feeder referencing your verified CSV dataset
-    private final FeederBuilder<String> feeder = csv("CreateDeptAdminUsersSimulation.csv").queue();
+    private final FeederBuilder<String> feeder = csv("CreateUsersSimulation_OrgAdmin.csv").queue();
 
-    // 2. Base HTTP Options
+    // 2. Base HTTP Options mapped exactly from your working Scenario 7 script
     private HttpProtocolBuilder httpProtocol = http
             .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
             .wsBaseUrl("wss://wms-dev-xdmauto.msiidcitgcloud.com")
@@ -35,7 +42,7 @@ public class CreateDeptAdminUsersSimulation extends Simulation {
             .maxConnectionsPerHost(6);
 
     // 3. Sequential Scenario Workflow Chain
-    private ScenarioBuilder scn = scenario("Create Department Admin Users Flow")
+    private ScenarioBuilder scn = scenario("Create Admin Users Flow")
             .feed(feeder)
 
             // --- STEP 01: KEYCLOAK LOGIN HANDSHAKE ---
@@ -70,6 +77,7 @@ public class CreateDeptAdminUsersSimulation extends Simulation {
             .exitHereIfFailed()
 
             // --- STEP 02: APPLICATION BASELINE INITIALIZATION ---
+            // Gatling natively forwards all background infrastructure cookies automatically here!
             .exec(http("4. API: Get Global Data")
                     .post("/cat/rest/getGlobalData")
                     .check(status().is(200)))
@@ -80,8 +88,8 @@ public class CreateDeptAdminUsersSimulation extends Simulation {
                     .check(status().is(200)))
             .pause(1)
 
-            // --- STEP 03: TARGET DEPARTMENT USER PROVISIONING ---
-            .exec(http("Create Dept Admin Request")
+            // --- STEP 03: TARGET USER PROVISIONING ---
+            .exec(http("Create User Request")
                     .post("/cat/rest/createUser")
                     .header("Content-Type", "application/json")
                     .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
@@ -91,9 +99,9 @@ public class CreateDeptAdminUsersSimulation extends Simulation {
                             + "\"pwd\":\"#{password}\","
                             + "\"generatepwd\":false,"
                             + "\"email\":\"#{email}\","
-                            + "\"roles\":[\"Department Admin\"],"
+                            + "\"roles\":[\"Organization Admin\"],"
                             + "\"attributes\":{\"corpid\":\"AshwinCorp\",\"actions\":[\"1\"]},"
-                            + "\"userRoleId\":\"4273c565-96d7-4c49-97d3-451c90273e69\","
+                            + "\"userRoleId\":\"0881af1f-fd6a-4115-8e5b-4568c54d685b\","
                             + "\"appId\":\"1\","
                             + "\"roleId\":\"21\""
                             + "}"))
@@ -101,12 +109,13 @@ public class CreateDeptAdminUsersSimulation extends Simulation {
                     .check(bodyString().saveAs("lastResponse"))
             )
             .exec(session -> {
-                System.out.println("DEBUG >>> Dept Admin Creation Response: " + session.getString("lastResponse"));
+                System.out.println("DEBUG >>> Creation Response: " + session.getString("lastResponse"));
                 return session;
             });
 
     {
         setUp(
+                // --- FIX: Staggers 6 users across 12 seconds (1 user every 2 seconds) to bypass brute-force protection
                 scn.injectOpen(rampUsers(1).during(10))
         ).protocols(httpProtocol);
     }

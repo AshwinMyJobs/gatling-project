@@ -13,7 +13,7 @@ import java.time.Duration;
  */
 public class CATUserLifecycleSimulation extends Simulation {
 
-    private FeederBuilder<String> userFeeder = csv("users2.csv").circular();
+    private FeederBuilder<String> userFeeder = csv("catuserlifecyclesimulation.csv").circular();
 
     private HttpProtocolBuilder httpProtocol = http
             .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
