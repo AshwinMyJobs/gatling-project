@@ -10,17 +10,16 @@ import static io.gatling.javaapi.core.CoreDsl.*;
 import static io.gatling.javaapi.http.HttpDsl.*;
 
 /**
- * Meaningful Name: Scenario5_Login_ExternalUserManagement
- * Purpose: Dedicated End-to-End Test for user authentication, data bootstrapping,
- *          and dynamic External User Data synchronization tracking workflows.
+ * Purpose: Verification Run - Auth, Full Baseline Bootstrapping, and Group Profile Transactions.
  */
-public class Scenario5_Login_ExternalUserManagement extends Simulation {
+public class Scenario4_Login_GroupProfileManagement_Create_List extends Simulation {
 
-    private final FeederBuilder<String> userFeeder = csv("external_user_management_list.csv").circular();
+    private final FeederBuilder<String> feeder = csv("group_profile_management_list.csv").circular();
 
     private HttpProtocolBuilder httpProtocol = http
             .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
             .wsBaseUrl("wss://wms-dev-xdmauto.msiidcitgcloud.com")
+            .header("Host", "wms-dev-xdmauto.msiidcitgcloud.com")
             .acceptHeader("application/json, text/plain, */*")
             .acceptLanguageHeader("en-US,en;q=0.9")
             .userAgentHeader("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -56,6 +55,7 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
                             .get(session -> session.getString("callbackUrl"))
                             .check(status().is(200)))
     );
+
     // --- 2. BASELINE PAGE LOAD GROUP ---
     private static final ChainBuilder baselinePageLoad = group("Step 02: Initial Page Load Baseline").on(
             exec(http("4. API: Get Global Data").post("/cat/rest/getGlobalData").check(status().is(200)))
@@ -63,7 +63,6 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
                     .exec(http("6. API: Get Users Permissions")
                             .post("/cat/rest/getUsersPermissions")
                             .header("Content-Type", "application/json")
-                            // 👇 FIXED: Changed corpName from AshwinCorp to CorpN1
                             .body(StringBody("{\"agencyInfo\":{\"corpName\":\"CorpN1\"},\"userIdList\":[\"#{username}\"]}"))
                             .check(status().is(200)))
                     .exec(http("7. API: Sync Master List Info").post("/cat/rest/syncMasterListInfo").check(status().is(200)))
@@ -72,50 +71,74 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
                             exec(http("9. API: Get Subscriber Stats").get("/cat/rest/getSubscriberStats").check(status().is(200)))
                     )
     );
+    // --- 3. GROUP PROFILE PROCESSING ---
+    private static final ChainBuilder groupProfileActions = group("Step 03: Group Profile Processing").on(
+            // Action A: Create Target Group Profile with a dynamic safe name logic layer
+            exec(session -> {
+                long timestamp = System.currentTimeMillis();
+                return session.set("dynamicProfileName", "Profile_" + timestamp);
+            })
+                    .exec(http("10. API: Create Group Profile")
+                            .post("/cat/rest/createGroupProfile")
+                            .header("Content-Type", "application/json")
+                            .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
+                            .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com/cat/static/cobalt-ngcatui/index.html")
+                            .body(StringBody("{"
+                                    + "\"grpProfileInfo\":{"
+                                    + "\"grpProfileName\":\"#{dynamicProfileName}\","
+                                    + "\"grpType\":\"1\","
+                                    + "\"grpAvatar\":\"0\","
+                                    + "\"grpOSMListId\":\"\","
+                                    + "\"audioCutIn\":0,"
+                                    + "\"mcxGroup\":\"0\","
+                                    + "\"grpShared\":\"0\","
+                                    + "\"grpSharedCorpList\":[]"
+                                    + "}"
+                                    + "}"))
+                            .check(status().is(200))
+                            .check(bodyString().saveAs("createResponse")))
 
-    // --- 3. EXTERNAL DATA MANAGEMENT ---
-    private static final ChainBuilder externalDataManagement = group("Step 03: External Data Verification").on(
-            exec(http("10. API: Get External Data Master List")
-                    .post("/cat/rest/getMasterList/getExternalData")
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/plain, */*")
-                    .header("Accept-Language", "en_US")
-                    .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
-                    .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com/cat/static/cobalt-ngcatui/index.html")
-                    .body(StringBody("{"
-                            + "\"forceReload\":true,"
-                            + "\"isGetExternal\":true"
-                            + "}"))
-                    .check(status().is(200))
-                    // 👇 Captures response text payload to check content presence
-                    .check(bodyString().saveAs("rawExternalResponse")))
-
-                    // 👇 Added console log block to check your External User payload structure
                     .exec(session -> {
-                        System.out.println("\n==============================================");
-                        System.out.println("LOGGED IN AS VIRTUAL USER: " + session.getString("username"));
-                        System.out.println("--- EXTERNAL USERS MASTER LIST DUMP ---");
-                        System.out.println(session.get("rawExternalResponse") != null ? session.getString("rawExternalResponse") : "NO DATA RESPONSE FOUND");
+                        System.out.println("\nDEBUG >>> Creation Response: " + session.getString("createResponse"));
+                        return session;
+                    })
+
+                    .pause(2)
+
+                    // Action B: Fetch Group Profile Validation List with fully configured layout criteria
+                    .exec(http("11. API: Get Group Profile List")
+                            .post("/cat/rest/getGroupProfileList")
+                            .header("Content-Type", "application/json")
+                            .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
+                            .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com/cat/static/cobalt-ngcatui/index.html")
+                            // 👇 FIXED: Supplied verified target layout parameters instead of empty context brackets
+                            .body(StringBody("{"
+                                    + "\"pageNumber\":\"1\","
+                                    + "\"fetchSize\":\"100\""
+                                    + "}"))
+                            .check(status().is(200))
+                            .check(bodyString().saveAs("listResponse")))
+
+                    .exec(session -> {
+                        System.out.println("DEBUG >>> Profile List Context Output:");
+                        System.out.println(session.get("listResponse") != null ? session.getString("listResponse") : "EMPTY");
                         System.out.println("==============================================\n");
                         return session;
                     })
     );
 
-    // 4. SCENARIO DEFINITION
-    private ScenarioBuilder scn = scenario("External User Data Management Simulation")
-            .feed(userFeeder)
+    // --- SCENARIO LIFECYCLE DEFINITION ---
+    private ScenarioBuilder scn = scenario("CAT E2E User Lifecycle - Group Profile Management")
+            .feed(feeder)
             .exec(loginGroup)
             .pause(2)
             .exec(baselinePageLoad)
             .pause(2)
-            .exec(externalDataManagement);
+            .exec(groupProfileActions);
 
-    // 5. INJECTION PROFILE
     {
         setUp(
-                scn.injectOpen(
-                        atOnceUsers(1)
-                )
+                scn.injectOpen(atOnceUsers(1))
         ).protocols(httpProtocol);
     }
 }
