@@ -10,18 +10,14 @@ import static io.gatling.javaapi.core.CoreDsl.*;
 import static io.gatling.javaapi.http.HttpDsl.*;
 
 /**
- * Meaningful Name: Scenario5_Login_ExternalUserManagement
- * Purpose: Dedicated End-to-End Test for user authentication, data bootstrapping,
- *          and dynamic External User Data synchronization tracking workflows.
- *
- * This is not complete yet only the landing page api calls are called.
+ * Meaningful Name: Scenario4_Login_GroupProfileManagement_Modify
+ * Purpose: Dedicated End-to-End Test for Group Profile list extraction
+ *          and subsequent dynamic transaction modifications.
  */
-public class Scenario5_Login_ExternalUserManagement extends Simulation {
+public class Scenario4_Login_GroupProfileManagement_Modify extends Simulation {
 
-    // 1. Endless loop data feeder targeting your core tracking configuration file
-    private final FeederBuilder<String> userFeeder = csv("talk_group_management.csv").circular();
+    private final FeederBuilder<String> feeder = csv("group_profile_management_modify.csv").circular();
 
-    // 2. HTTP Base Options cleanly mapped onto your strict subdomain routing environment
     private HttpProtocolBuilder httpProtocol = http
             .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
             .wsBaseUrl("wss://wms-dev-xdmauto.msiidcitgcloud.com")
@@ -30,11 +26,7 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
             .acceptLanguageHeader("en-US,en;q=0.9")
             .userAgentHeader("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .disableCaching()
-            .disableAutoReferer()
-            // --- CRITICAL CONNECTION FIXES FOR PREMATURE CLOSE ---
-            .connectionHeader("keep-alive")
-            .shareConnections()
-            .maxConnectionsPerHost(6);
+            .shareConnections();
 
     // --- 1. LOGIN GROUP ---
     private static ChainBuilder loginGroup = group("Step 01: Auth & Login").on(
@@ -70,49 +62,75 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
     private static final ChainBuilder baselinePageLoad = group("Step 02: Initial Page Load Baseline").on(
             exec(http("4. API: Get Global Data").post("/cat/rest/getGlobalData").check(status().is(200)))
                     .exec(http("5. API: Refresh Token").post("/cat/view/refreshToken").body(StringBody("{}")).check(status().is(200)))
-                    .exec(http("6. API: Get Users Permissions").post("/cat/rest/getUsersPermissions").header("Content-Type", "application/json").body(StringBody("{\"agencyInfo\":{\"corpName\":\"AshwinCorp\"},\"userIdList\":[\"#{username}\"]}")).check(status().is(200)))
+                    .exec(http("6. API: Get Users Permissions")
+                            .post("/cat/rest/getUsersPermissions")
+                            .header("Content-Type", "application/json")
+                            .body(StringBody("{\"agencyInfo\":{\"corpName\":\"CorpN1\"},\"userIdList\":[\"#{username}\"]}"))
+                            .check(status().is(200)))
                     .exec(http("7. API: Sync Master List Info").post("/cat/rest/syncMasterListInfo").check(status().is(200)))
                     .exec(http("8. API: Get All Async Events").get("/cat/rest/getAllAsyncEvents").check(status().is(200)))
                     .repeat(4, "i").on(
                             exec(http("9. API: Get Subscriber Stats").get("/cat/rest/getSubscriberStats").check(status().is(200)))
                     )
     );
-
-    // --- 3. EXTERNAL DATA MANAGEMENT ---
-    private static final ChainBuilder externalDataManagement = group("Step 03: External Data Verification").on(
-            exec(http("10. API: Get External Data Master List")
-                    .post("/cat/rest/getMasterList/getExternalData")
+    // --- 3b. GROUP PROFILE INVENTORY FETCH ---
+    private static final ChainBuilder fetchGroupProfiles = group("Step 03b: Fetch Group Profiles").on(
+            exec(http("12. API: Get Group Profile List")
+                    .post("/cat/rest/getGroupProfileList")
                     .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/plain, */*")
-                    .header("Accept-Language", "en_US")
                     .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
                     .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com/cat/static/cobalt-ngcatui/index.html")
-                    .header("Sec-Fetch-Dest", "empty")
-                    .header("Sec-Fetch-Mode", "cors")
-                    .header("Sec-Fetch-Site", "same-origin")
-                    // Java 11 compliant map layout matching your literal curl params ("forceReload":true)
                     .body(StringBody("{"
-                            + "\"forceReload\":true,"
-                            + "\"isGetExternal\":true"
+                            + "\"pageNumber\":\"1\","
+                            + "\"fetchSize\":\"100\""
+                            + "}"))
+                    .check(status().is(200))
+                    // 👇 Automatically extracts the top array profile parameters dynamically from your inventory results
+                    .check(jsonPath("$.grpProfileList.grpProfileDetails[0].grpProfileId").saveAs("targetProfileId"))
+                    .check(jsonPath("$.grpProfileList.grpProfileDetails[0].grpProfileName").saveAs("targetProfileName")))
+    );
+
+    // --- 3c. MODIFY GROUP PROFILE GROUP ---
+    private static ChainBuilder modifyGroupProfile = group("Step 03c: Modify Group Profile").on(
+            exec(http("13. API: Modify Group Profile")
+                    .post("/cat/rest/modifyGroupProfile")
+                    .header("Content-Type", "application/json")
+                    .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
+                    .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com/cat/static/cobalt-ngcatui/index.html")
+                    // Mapped precisely to your raw JSON cURL schema arguments context
+                    .body(StringBody("{"
+                            + "\"grpProfileInfo\":{"
+                            + "\"grpProfileName\":\"#{targetProfileName}\","
+                            + "\"newGrpProfileName\":\"#{targetProfileName}-modified\","
+                            + "\"grpProfileId\":\"#{targetProfileId}\","
+                            + "\"grpType\":\"1\","
+                            + "\"grpAvatar\":\"0\","
+                            + "\"grpOSMListId\":\"\","
+                            + "\"audioCutIn\":0,"
+                            + "\"mcxGroup\":\"0\","
+                            + "\"overrideDND\":null,"
+                            + "\"grpShared\":\"0\","
+                            + "\"grpSharedCorpList\":[],"
+                            + "\"ugwInterop\":null"
+                            + "}"
                             + "}"))
                     .check(status().is(200)))
     );
 
-    // 4. SCENARIO DEFINITION
-    private ScenarioBuilder scn = scenario("External User Data Management Simulation")
-            .feed(userFeeder)
+    // --- SCENARIO LIFECYCLE DEFINITION ---
+    private ScenarioBuilder scn = scenario("Group Profiles Modification Run")
+            .feed(feeder)
             .exec(loginGroup)
             .pause(2)
             .exec(baselinePageLoad)
             .pause(2)
-            .exec(externalDataManagement);
+            .exec(fetchGroupProfiles)
+            .pause(2)
+            .exec(modifyGroupProfile);
 
-    // 5. INJECTION PROFILE
     {
         setUp(
-                scn.injectOpen(
-                        atOnceUsers(1)
-                )
+                scn.injectOpen(atOnceUsers(1))
         ).protocols(httpProtocol);
     }
 }

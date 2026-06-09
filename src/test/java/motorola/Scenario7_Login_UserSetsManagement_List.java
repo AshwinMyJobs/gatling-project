@@ -10,18 +10,16 @@ import static io.gatling.javaapi.core.CoreDsl.*;
 import static io.gatling.javaapi.http.HttpDsl.*;
 
 /**
- * Meaningful Name: Scenario5_Login_ExternalUserManagement
+ * Meaningful Name: Scenario7_Login_UserSetsManagement
  * Purpose: Dedicated End-to-End Test for user authentication, data bootstrapping,
- *          and dynamic External User Data synchronization tracking workflows.
- *
- * This is not complete yet only the landing page api calls are called.
+ *          and User Sets / Sublists retrieval optimization.
  */
-public class Scenario5_Login_ExternalUserManagement extends Simulation {
+public class Scenario7_Login_UserSetsManagement_List extends Simulation {
 
-    // 1. Endless loop data feeder targeting your core tracking configuration file
-    private final FeederBuilder<String> userFeeder = csv("talk_group_management.csv").circular();
+    // 1. Endless loop data feeder referencing your configured CSV asset
+    private final FeederBuilder<String> userFeeder = csv("user_set_management_list.csv").circular();
 
-    // 2. HTTP Base Options cleanly mapped onto your strict subdomain routing environment
+    // 2. HTTP Base Options locked to your exact subdomain environment
     private HttpProtocolBuilder httpProtocol = http
             .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
             .wsBaseUrl("wss://wms-dev-xdmauto.msiidcitgcloud.com")
@@ -70,7 +68,12 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
     private static final ChainBuilder baselinePageLoad = group("Step 02: Initial Page Load Baseline").on(
             exec(http("4. API: Get Global Data").post("/cat/rest/getGlobalData").check(status().is(200)))
                     .exec(http("5. API: Refresh Token").post("/cat/view/refreshToken").body(StringBody("{}")).check(status().is(200)))
-                    .exec(http("6. API: Get Users Permissions").post("/cat/rest/getUsersPermissions").header("Content-Type", "application/json").body(StringBody("{\"agencyInfo\":{\"corpName\":\"AshwinCorp\"},\"userIdList\":[\"#{username}\"]}")).check(status().is(200)))
+                    .exec(http("6. API: Get Users Permissions")
+                            .post("/cat/rest/getUsersPermissions")
+                            .header("Content-Type", "application/json")
+                            // 👇 FIXED: Changed corpName from AshwinCorp to CorpN1
+                            .body(StringBody("{\"agencyInfo\":{\"corpName\":\"CorpN1\"},\"userIdList\":[\"#{username}\"]}"))
+                            .check(status().is(200)))
                     .exec(http("7. API: Sync Master List Info").post("/cat/rest/syncMasterListInfo").check(status().is(200)))
                     .exec(http("8. API: Get All Async Events").get("/cat/rest/getAllAsyncEvents").check(status().is(200)))
                     .repeat(4, "i").on(
@@ -78,10 +81,10 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
                     )
     );
 
-    // --- 3. EXTERNAL DATA MANAGEMENT ---
-    private static final ChainBuilder externalDataManagement = group("Step 03: External Data Verification").on(
-            exec(http("10. API: Get External Data Master List")
-                    .post("/cat/rest/getMasterList/getExternalData")
+    // --- 3. USER SETS MANAGEMENT ---
+    private static final ChainBuilder userSetsManagement = group("Step 03: User Sets Processing").on(
+            exec(http("10. API: Get All User Sublists")
+                    .post("/cat/rest/getAllSublists")
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/plain, */*")
                     .header("Accept-Language", "en_US")
@@ -90,22 +93,33 @@ public class Scenario5_Login_ExternalUserManagement extends Simulation {
                     .header("Sec-Fetch-Dest", "empty")
                     .header("Sec-Fetch-Mode", "cors")
                     .header("Sec-Fetch-Site", "same-origin")
-                    // Java 11 compliant map layout matching your literal curl params ("forceReload":true)
                     .body(StringBody("{"
-                            + "\"forceReload\":true,"
-                            + "\"isGetExternal\":true"
+                            + "\"pageNumber\":\"0\","
+                            + "\"fetchSize\":\"200\""
                             + "}"))
-                    .check(status().is(200)))
+                    .check(status().is(200))
+                    // 👇 Captures response text payload to confirm content presence
+                    .check(bodyString().saveAs("rawUserSets")))
+
+                    // 👇 Added console log block to check your newly created User Set payload structure
+                    .exec(session -> {
+                        System.out.println("\n==============================================");
+                        System.out.println("LOGGED IN AS VIRTUAL USER: " + session.getString("username"));
+                        System.out.println("--- USER SETS / SUBLISTS STRING RESPONSE ---");
+                        System.out.println(session.get("rawUserSets") != null ? session.getString("rawUserSets") : "NO DATA RESPONSE FOUND");
+                        System.out.println("==============================================\n");
+                        return session;
+                    })
     );
 
     // 4. SCENARIO DEFINITION
-    private ScenarioBuilder scn = scenario("External User Data Management Simulation")
+    private ScenarioBuilder scn = scenario("User Sets Simulation")
             .feed(userFeeder)
             .exec(loginGroup)
             .pause(2)
             .exec(baselinePageLoad)
             .pause(2)
-            .exec(externalDataManagement);
+            .exec(userSetsManagement);
 
     // 5. INJECTION PROFILE
     {

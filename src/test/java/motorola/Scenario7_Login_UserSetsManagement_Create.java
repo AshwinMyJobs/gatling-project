@@ -10,16 +10,15 @@ import static io.gatling.javaapi.core.CoreDsl.*;
 import static io.gatling.javaapi.http.HttpDsl.*;
 
 /**
- * Meaningful Name: Scenario7_Login_UserSetsManagement
- * Purpose: Dedicated End-to-End Test for user authentication, data bootstrapping,
- *          and User Sets / Sublists retrieval optimization.
+ * Meaningful Name: Scenario7_Login_UserSetsManagement_Create
+ * Purpose: Dedicated End-to-End Test for User Sets sequential creation
+ *          and operational overview list inventory verification.
  */
-public class Scenario7_Login_UserSetsManagement extends Simulation {
+public class Scenario7_Login_UserSetsManagement_Create extends Simulation {
 
-    // 1. Endless loop data feeder referencing your configured CSV asset
-    private final FeederBuilder<String> userFeeder = csv("talk_group_management.csv").circular();
+    private final FeederBuilder<String> userFeeder = csv("user_set_management_create.csv").circular();
 
-    // 2. HTTP Base Options locked to your exact subdomain environment
+    // 👇 FIXED: Removed malformed protocol prefixes from domain validation fields
     private HttpProtocolBuilder httpProtocol = http
             .baseUrl("https://wms-dev-xdmauto.msiidcitgcloud.com")
             .wsBaseUrl("wss://wms-dev-xdmauto.msiidcitgcloud.com")
@@ -29,7 +28,6 @@ public class Scenario7_Login_UserSetsManagement extends Simulation {
             .userAgentHeader("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .disableCaching()
             .disableAutoReferer()
-            // --- CRITICAL CONNECTION FIXES FOR PREMATURE CLOSE ---
             .connectionHeader("keep-alive")
             .shareConnections()
             .maxConnectionsPerHost(6);
@@ -63,12 +61,15 @@ public class Scenario7_Login_UserSetsManagement extends Simulation {
                             .get(session -> session.getString("callbackUrl"))
                             .check(status().is(200)))
     );
-
     // --- 2. BASELINE PAGE LOAD GROUP ---
     private static final ChainBuilder baselinePageLoad = group("Step 02: Initial Page Load Baseline").on(
             exec(http("4. API: Get Global Data").post("/cat/rest/getGlobalData").check(status().is(200)))
                     .exec(http("5. API: Refresh Token").post("/cat/view/refreshToken").body(StringBody("{}")).check(status().is(200)))
-                    .exec(http("6. API: Get Users Permissions").post("/cat/rest/getUsersPermissions").header("Content-Type", "application/json").body(StringBody("{\"agencyInfo\":{\"corpName\":\"AshwinCorp\"},\"userIdList\":[\"#{username}\"]}")).check(status().is(200)))
+                    .exec(http("6. API: Get Users Permissions")
+                            .post("/cat/rest/getUsersPermissions")
+                            .header("Content-Type", "application/json")
+                            .body(StringBody("{\"agencyInfo\":{\"corpName\":\"CorpN1\"},\"userIdList\":[\"#{username}\"]}"))
+                            .check(status().is(200)))
                     .exec(http("7. API: Sync Master List Info").post("/cat/rest/syncMasterListInfo").check(status().is(200)))
                     .exec(http("8. API: Get All Async Events").get("/cat/rest/getAllAsyncEvents").check(status().is(200)))
                     .repeat(4, "i").on(
@@ -76,36 +77,64 @@ public class Scenario7_Login_UserSetsManagement extends Simulation {
                     )
     );
 
-    // --- 3. USER SETS MANAGEMENT ---
-    private static final ChainBuilder userSetsManagement = group("Step 03: User Sets Processing").on(
-            exec(http("10. API: Get All User Sublists")
+    // --- 3a. CREATE USER SET GROUP ---
+    private static ChainBuilder createUserSet = group("Step 03a: Create New User Set").on(
+            exec(session -> {
+                long timestamp = System.currentTimeMillis();
+                return session.set("dynamicUserSetName", "UserSet_" + timestamp);
+            })
+                    .exec(http("11. API: Create Sublist")
+                            .post("/cat/rest/createSublist")
+                            .header("Content-Type", "application/json")
+                            .header("Accept-Language", "en_US")
+                            .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com")
+                            .body(StringBody("{"
+                                    + "\"addedMDNListIds\":[\"9300050122\"],"
+                                    + "\"newSublistName\":\"#{dynamicUserSetName}\","
+                                    + "\"addedSublistIds\":[],"
+                                    + "\"mdnlist\":[],"
+                                    + "\"listType\":null,"
+                                    + "\"listDistribution\":0"
+                                    + "}"))
+                            .check(status().is(200)))
+    );
+
+    // --- 3b. USER SETS INVENTORY FETCH ---
+    private static final ChainBuilder userSetsManagement = group("Step 03b: User Sets Inventory Fetch").on(
+            exec(http("12. API: Get All User Sublists")
                     .post("/cat/rest/getAllSublists")
                     .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/plain, */*")
                     .header("Accept-Language", "en_US")
-                    .header("Origin", "https://wms-dev-xdmauto.msiidcitgcloud.com")
-                    .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com/cat/static/cobalt-ngcatui/index.html")
-                    .header("Sec-Fetch-Dest", "empty")
-                    .header("Sec-Fetch-Mode", "cors")
-                    .header("Sec-Fetch-Site", "same-origin")
-                    // Java 11 safe concatenated format mapped exactly to your raw payload criteria
+                    .header("Referer", "https://wms-dev-xdmauto.msiidcitgcloud.com")
                     .body(StringBody("{"
                             + "\"pageNumber\":\"0\","
                             + "\"fetchSize\":\"200\""
                             + "}"))
-                    .check(status().is(200)))
+                    .check(status().is(200))
+                    .check(bodyString().saveAs("rawUserSets")))
+
+                    .exec(session -> {
+                        System.out.println("\n==============================================");
+                        System.out.println("LOGGED IN AS VIRTUAL USER: " + session.getString("username"));
+                        System.out.println("--- USER SETS / SUBLISTS STRING RESPONSE ---");
+                        System.out.println(session.get("rawUserSets") != null ? session.getString("rawUserSets") : "NO DATA RESPONSE FOUND");
+                        System.out.println("==============================================\n");
+                        return session;
+                    })
     );
 
-    // 4. SCENARIO DEFINITION
-    private ScenarioBuilder scn = scenario("User Sets Simulation")
+    // 4. SCENARIO LIFECYCLE ROUTING DEFINITION
+    private ScenarioBuilder scn = scenario("User Sets Simulation Lifecycle Flow")
             .feed(userFeeder)
             .exec(loginGroup)
             .pause(2)
             .exec(baselinePageLoad)
             .pause(2)
+            .exec(createUserSet)
+            .pause(2)
             .exec(userSetsManagement);
 
-    // 5. INJECTION PROFILE
+    // 5. RUN SETTINGS INJECTION PROFILE
     {
         setUp(
                 scn.injectOpen(
