@@ -15,6 +15,11 @@ import static io.gatling.javaapi.http.HttpDsl.*;
  * Meaningful Name: Scenario1_Login_SubscriberManagement_Allocate
  * Purpose: Advanced End-to-End Test for user authentication, data bootstrapping,
  *          and dynamic Subscriber Allocation, running continuously for 1 hour.
+ * This simulation will allocate subscribers and then revoke them.
+ * Feeder user_subscriber_mapping.csv contains the following
+ * username,password,hierarchy_id,mdn contains
+ * (here username/password can be of superadmin or any admin, hierarchy_id is the organization to which the subscriber
+ *  belongs and mdn is the subscriber phone number)
  */
 public class Scenario1_Login_SubscriberManagement_Allocate extends Simulation {
 

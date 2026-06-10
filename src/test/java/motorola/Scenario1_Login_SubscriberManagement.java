@@ -14,6 +14,11 @@ import static io.gatling.javaapi.http.HttpDsl.*;
 /**
  * Meaningful Name: Scenario1_Login_SubscriberManagement
  * Purpose: Full Journey - Auth, Baseline, and the 3-step Subscriber sequence.
+ *
+ * This simulation is mainly calling all the api on the landing page like
+ * getCorpHierarchy,getPaginationInfo,getAllAgencySubsList
+ *
+ * Note allocation is not happening here it is done in Scenario1_Login_SubscriberManagement_Allocation simulation
  */
 public class Scenario1_Login_SubscriberManagement extends Simulation {
 
